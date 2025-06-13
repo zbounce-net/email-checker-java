@@ -1,0 +1,113 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'signing'
+    id 'com.diffplug.spotless' version '6.11.0'
+}
+
+group   = 'net.zbounce'
+version = '1.0.0'                       // менять при релизах
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+    withSourcesJar()
+    withJavadocJar()
+}
+
+repositories { mavenCentral() }
+
+ext {
+    jakarta_annotation_version = '1.3.5'
+}
+
+dependencies {
+    implementation 'io.swagger:swagger-annotations:1.6.8'
+    implementation 'com.google.code.findbugs:jsr305:3.0.2'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'
+    implementation 'com.google.code.gson:gson:2.9.1'
+    implementation 'io.gsonfire:gson-fire:1.9.0'
+    implementation 'jakarta.ws.rs:jakarta.ws.rs-api:2.1.6'
+    implementation 'org.openapitools:jackson-databind-nullable:0.2.6'
+    implementation 'org.apache.commons:commons-lang3:3.17.0'
+    implementation "jakarta.annotation:jakarta.annotation-api:$jakarta_annotation_version"
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.3'
+    testRuntimeOnly    'org.junit.jupiter:junit-jupiter-engine:5.10.3'
+    testImplementation 'org.mockito:mockito-core:3.12.4'
+}
+
+test {
+    useJUnitPlatform()
+    dependsOn 'cleanTest'
+    testLogging { events 'passed', 'skipped', 'failed' }
+}
+
+spotless {
+    enforceCheck false
+    java {
+        googleJavaFormat('1.8').aosp().reflowLongStrings()
+        removeUnusedImports()
+        importOrder()
+    }
+}
+/* ---------- Javadoc: игнорируем нестандартный тег ---------- */
+tasks.withType(Javadoc).configureEach {
+
+    // 1. Регистрируем собственный тег, чтобы "unknown tag" не вылетал
+    options.addStringOption('tag', 'http.response.details:a:Http Response Details')
+
+    // 2. Отключаем строгую проверку doclint (Java 8+)
+    options.addBooleanOption('Xdoclint:none', true)
+
+    // 3. Не прекращаем сборку, даже если что-то ещё не нравится
+    failOnError = false
+}
+
+/* ---------- публикация в Maven Central ---------- */
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            artifactId = 'email-checker'          // → net.zbounce:email-checker:1.0.0
+
+            pom {
+                name        = 'ZBounce Email-Checker Java SDK'
+                description = 'Java client for ZBounce batch & real-time email verification API'
+                url         = 'https://github.com/zbounce-net/email-checker-java'
+
+                licenses {
+                    license {
+                        name = 'MIT'
+                        url  = 'https://opensource.org/licenses/MIT'
+                    }
+                }
+                developers {
+                    developer {
+                        id    = 'shuliakovsky'
+                        name  = 'shuliakovsky'
+                        email = 'shuliakovsjy@gmail.com'
+                    }
+                }
+                scm { url = 'https://github.com/zbounce-net/email-checker-java' }
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = 'OSSRH'
+            url  = uri('https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/')
+            credentials {
+                // можно в gradle.properties  ossrhUser=  ossrhPass=
+                username = findProperty('ossrhUser') ?: System.getenv('OSSRH_USER')
+                password = findProperty('ossrhPass') ?: System.getenv('OSSRH_PASS')
+            }
+        }
+    }
+}
+
+/* ---------- GPG-подпись ---------- */
+signing {
+    sign publishing.publications.mavenJava
+}

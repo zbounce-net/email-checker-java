@@ -1,0 +1,460 @@
+openapi: 3.0.1
+info:
+  description: Batch and real-time email verification.
+  title: ZBounce Email-Checker API
+  version: 2.2.0
+servers:
+- url: https://api.zbounce.net/
+tags:
+- description: User endpoints (require X-API-Key)
+  name: Public
+paths:
+  /v1/fast-verify:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FastVerifyRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailReport'
+          description: OK
+        "400":
+          description: Invalid JSON
+        "403":
+          description: Invalid key / exhausted quota
+        "429":
+          description: Server busy
+      security:
+      - ApiKeyAuth: []
+      summary: Fast single-email verification
+      tags:
+      - Public
+      x-content-type: application/json
+      x-accepts:
+      - application/json
+  /v1/tasks:
+    post:
+      requestBody:
+        content:
+          application/json:
+            examples:
+              simple:
+                description: Verify two addresses; quota is reserved immediately.
+                summary: Minimal task (no webhook)
+                value:
+                  emails:
+                  - alice@example.com
+                  - bob@yahoo.com
+              with_webhook_completed:
+                description: Send a single notification when the task finishes.
+                summary: Task with webhook (completed mode)
+                value:
+                  emails:
+                  - john@example.com
+                  - jane@example.net
+                  webhook:
+                    url: https://myapp.com/hooks/email-status
+                    secret: hmac_secret_key
+                    mode: completed
+                    max_retries: 3
+                    timeout_ms: 5000
+                    basic_auth:
+                      user: hook-user
+                      password: hook-pass
+              with_webhook_results:
+                description: "Full webhook configuration, HMAC signature and basic-auth."
+                summary: Task with webhook (results mode)
+                value:
+                  emails:
+                  - alice@example.com
+                  - bob@yahoo.com
+                  webhook:
+                    url: https://myapp.com/hooks/email-results
+                    secret: s3cr3t_hmac_key
+                    mode: results
+                    max_retries: 5
+                    timeout_ms: 8000
+                    basic_auth:
+                      user: hook-user
+                      password: hook-pass
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              examples:
+                queued:
+                  summary: Task accepted
+                  value:
+                    task_id: cdb2c0c5-9f4d-4fa8-9d4c-6b57dd12a4d1
+                    accepted: 2
+                    skipped: 0
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+          description: Task created
+        "400":
+          description: Bad request
+        "403":
+          description: Quota exhausted / invalid key
+      security:
+      - ApiKeyAuth: []
+      summary: Create batch verification task
+      tags:
+      - Public
+      x-content-type: application/json
+      x-accepts:
+      - application/json
+  /v1/tasks/{task_id}:
+    get:
+      parameters:
+      - explode: false
+        in: path
+        name: task_id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskStatusResponse'
+          description: OK
+        "404":
+          description: Not found
+      security:
+      - ApiKeyAuth: []
+      summary: Get task status
+      tags:
+      - Public
+      x-accepts:
+      - application/json
+  /v1/tasks-results/{task_id}:
+    get:
+      parameters:
+      - explode: false
+        in: path
+        name: task_id
+        required: true
+        schema:
+          type: string
+        style: simple
+      - explode: true
+        in: query
+        name: page
+        required: false
+        schema:
+          default: 1
+          minimum: 1
+          type: integer
+        style: form
+      - explode: true
+        in: query
+        name: per_page
+        required: false
+        schema:
+          default: 100
+          maximum: 1000
+          minimum: 1
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResults'
+          description: OK
+        "404":
+          description: Not found
+      security:
+      - ApiKeyAuth: []
+      summary: Paginated task results
+      tags:
+      - Public
+      x-accepts:
+      - application/json
+components:
+  schemas:
+    FastVerifyRequest:
+      example:
+        email: email
+      properties:
+        email:
+          maxLength: 256
+          pattern: "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\\
+            .[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$"
+          type: string
+      required:
+      - email
+      type: object
+    EmailReport:
+      example:
+        valid: true
+        permanent_error: true
+        accept_all: true
+        exists: true
+        ttl: 0
+        email: email
+        disposable: true
+        error_category: error_category
+      properties:
+        email:
+          type: string
+        valid:
+          type: boolean
+        disposable:
+          type: boolean
+        exists:
+          type: boolean
+        permanent_error:
+          type: boolean
+        error_category:
+          type: string
+        ttl:
+          description: Retry-after (seconds) for temporary errors
+          type: integer
+        accept_all:
+          description: True when the domain is catch-all
+          type: boolean
+      type: object
+    BasicAuth:
+      example:
+        password: password
+        user: user
+      properties:
+        user:
+          type: string
+        password:
+          type: string
+      type: object
+    WebhookConfig:
+      example:
+        mode: completed
+        basic_auth:
+          password: password
+          user: user
+        max_retries: 0
+        dlq_url: https://openapi-generator.tech
+        secret: secret
+        timeout_ms: 1000
+        url: https://openapi-generator.tech
+      properties:
+        url:
+          format: uri
+          type: string
+        secret:
+          type: string
+        mode:
+          default: completed
+          enum:
+          - completed
+          - results
+          type: string
+        max_retries:
+          default: 3
+          minimum: 0
+          type: integer
+        timeout_ms:
+          default: 5000
+          minimum: 1000
+          type: integer
+        dlq_url:
+          format: uri
+          type: string
+        basic_auth:
+          $ref: '#/components/schemas/BasicAuth'
+      required:
+      - url
+      type: object
+    APIKeyInfo:
+      properties:
+        api_key:
+          type: string
+        key_type:
+          enum:
+          - pay_as_you_go
+          - monthly
+          type: string
+        remaining_checks:
+          type: integer
+        expires_at:
+          format: date-time
+          type: string
+      type: object
+    CreateKeyRequest:
+      properties:
+        type:
+          enum:
+          - pay_as_you_go
+          - monthly
+          type: string
+        initial_checks:
+          minimum: 1
+          type: integer
+        validity_days:
+          minimum: 1
+          type: integer
+      required:
+      - initial_checks
+      - type
+      - validity_days
+      type: object
+    UpdateKeyRequest:
+      properties:
+        add_checks:
+          minimum: 1
+          type: integer
+        extend_days:
+          minimum: 1
+          type: integer
+      type: object
+    DLQReplayRequest:
+      properties:
+        id:
+          description: "Stream entry ID, e.g. 1690001112223-0"
+          type: string
+      required:
+      - id
+      type: object
+    CreateTaskRequest:
+      example:
+        emails:
+        - emails
+        - emails
+        - emails
+        - emails
+        - emails
+        webhook:
+          mode: completed
+          basic_auth:
+            password: password
+            user: user
+          max_retries: 0
+          dlq_url: https://openapi-generator.tech
+          secret: secret
+          timeout_ms: 1000
+          url: https://openapi-generator.tech
+      properties:
+        emails:
+          items:
+            format: email
+            type: string
+          maxItems: 10000
+          minItems: 1
+          type: array
+        webhook:
+          $ref: '#/components/schemas/WebhookConfig'
+      required:
+      - emails
+      type: object
+    TaskResponse:
+      example:
+        accepted: 0
+        task_id: task_id
+        skipped: 6
+      properties:
+        task_id:
+          type: string
+        accepted:
+          type: integer
+        skipped:
+          type: integer
+      type: object
+    TaskStatusResponse:
+      example:
+        total: 0
+        created_at: 5
+        total_pages: 1
+        done: 6
+        key:
+          expires_at: 9
+          reserved: 2
+          used: 7
+          type: pay_as_you_go
+          remaining: 5
+        status: status
+      properties:
+        status:
+          type: string
+        total:
+          type: integer
+        done:
+          type: integer
+        total_pages:
+          type: integer
+        created_at:
+          description: Unix timestamp
+          type: integer
+        key:
+          $ref: '#/components/schemas/KeySummary'
+      type: object
+    KeySummary:
+      example:
+        expires_at: 9
+        reserved: 2
+        used: 7
+        type: pay_as_you_go
+        remaining: 5
+      properties:
+        type:
+          enum:
+          - pay_as_you_go
+          - monthly
+          type: string
+        remaining:
+          type: integer
+        reserved:
+          type: integer
+        used:
+          type: integer
+        expires_at:
+          description: unix ts
+          type: integer
+      type: object
+    PaginatedResults:
+      example:
+        total: 6
+        data:
+        - valid: true
+          permanent_error: true
+          accept_all: true
+          exists: true
+          ttl: 0
+          email: email
+          disposable: true
+          error_category: error_category
+        - valid: true
+          permanent_error: true
+          accept_all: true
+          exists: true
+          ttl: 0
+          email: email
+          disposable: true
+          error_category: error_category
+        page: 0
+      properties:
+        page:
+          type: integer
+        total:
+          type: integer
+        data:
+          items:
+            $ref: '#/components/schemas/EmailReport'
+          type: array
+      type: object
+  securitySchemes:
+    ApiKeyAuth:
+      in: header
+      name: X-API-Key
+      type: apiKey
+
