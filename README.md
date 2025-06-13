@@ -1,4 +1,4 @@
-# openapi-java-client
+# ZBounce.net openapi-java-client
 
 ZBounce Email-Checker API
 - API version: 2.2.0
