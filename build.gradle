@@ -52,26 +52,21 @@ spotless {
         importOrder()
     }
 }
-/* ---------- Javadoc: игнорируем нестандартный тег ---------- */
 tasks.withType(Javadoc).configureEach {
-
-    // 1. Регистрируем собственный тег, чтобы "unknown tag" не вылетал
     options.addStringOption('tag', 'http.response.details:a:Http Response Details')
-
-    // 2. Отключаем строгую проверку doclint (Java 8+)
     options.addBooleanOption('Xdoclint:none', true)
-
-    // 3. Не прекращаем сборку, даже если что-то ещё не нравится
     failOnError = false
 }
 
-/* ---------- публикация в Maven Central ---------- */
 publishing {
     publications {
         mavenJava(MavenPublication) {
             from components.java
             artifactId = 'email-checker'          // → net.zbounce:email-checker:1.0.0
 
+            artifact(file("build/publications/mavenJava/pom-default.xml")) {
+                builtBy("generatePomFileForMavenJavaPublication")
+            }
             pom {
                 name        = 'ZBounce Email-Checker Java SDK'
                 description = 'Java client for ZBounce batch & real-time email verification API'
@@ -99,15 +94,14 @@ publishing {
             name = 'OSSRH'
             url  = uri('https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/')
             credentials {
-                // можно в gradle.properties  ossrhUser=  ossrhPass=
-                username = findProperty('ossrhUser') ?: System.getenv('OSSRH_USER')
-                password = findProperty('ossrhPass') ?: System.getenv('OSSRH_PASS')
+                username = findProperty("mavenCentralUsername")
+                password = findProperty("mavenCentralPassword")
             }
         }
     }
 }
 
-/* ---------- GPG-подпись ---------- */
 signing {
     sign publishing.publications.mavenJava
+    useGpgCmd()
 }
