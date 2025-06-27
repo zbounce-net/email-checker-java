@@ -13,6 +13,7 @@
 |**totalPages** | **Integer** |  |  [optional] |
 |**createdAt** | **Integer** | Unix timestamp |  [optional] |
 |**key** | [**KeySummary**](KeySummary.md) |  |  [optional] |
+|**tags** | **List&lt;String&gt;** | Tags associated with the task |  [optional] |
 
 
 ## Implemented Interfaces

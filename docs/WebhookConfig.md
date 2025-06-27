@@ -13,6 +13,7 @@
 |**maxRetries** | **Integer** |  |  [optional] |
 |**timeoutMs** | **Integer** |  |  [optional] |
 |**dlqUrl** | **URI** |  |  [optional] |
+|**eventUrl** | **URI** | Optional URL to receive open/unsubscribe event webhooks |  [optional] |
 |**basicAuth** | [**BasicAuth**](BasicAuth.md) |  |  [optional] |
 
 

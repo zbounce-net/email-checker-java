@@ -1,0 +1,1171 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "ZBounce Email Engine Platform",
+    "version": "3.1.0",
+    "description": "ZBounce Email Engine Platform API Reference"
+  },
+
+  "servers": [
+    { "url": "https://api.zbounce.net/" }
+  ],
+
+  "tags": [
+    { "name": "Public", "description": "Customer-facing endpoints (X-API-Key)" }
+  ],
+
+  "paths": {
+    "/v1/domains": {
+      "get": {
+        "tags": ["Public"],
+        "summary": "List sender domains",
+        "security": [{ "ApiKeyAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Array of registered domains",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/DomainInfo" }
+                },
+                "examples": {
+                  "sample": {
+                    "summary": "Two domains",
+                    "value": [
+                      {
+                        "domain": "example.org",
+                        "status": "active",
+                        "expires_at": 1735689600,
+                        "records": []
+                      },
+                      {
+                        "domain": "shop.com",
+                        "status": "pending",
+                        "expires_at": 1735689600,
+                        "records": [
+                          { "name": "shop.com",                "value": "v=spf1 ip4:203.0.113.5 include:spf.zbounce.net -all" },
+                          { "name": "zb1a2b3c4._domainkey.shop.com", "value": "v=DKIM1; k=rsa; p=MIIBIjANB..." },
+                          { "name": "_dmarc.shop.com",         "value": "v=DMARC1; p=quarantine; rua=mailto:dmarc@zbounce.net; pct=100" }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Public"],
+        "summary": "Register new sender domain",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DomainRegisterReq" },
+              "examples": {
+                "register": {
+                  "summary": "Register domain",
+                  "value": { "domain": "example.org" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Registration info with TXT records",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DomainInfo" },
+                "examples": {
+                  "records": {
+                    "summary": "TXT setup required",
+                    "value": {
+                      "domain": "example.org",
+                      "status": "pending",
+                      "expires_at": 1735689600,
+                      "records": [
+                        { "name": "example.org", "value": "v=spf1 ip4:195.154.84.104 include:spf.zbounce.net -all" },
+                        { "name": "zb9c7fab1._domainkey.example.org", "value": "v=DKIM1; k=rsa; p=MIIBIjANBg..." },
+                        { "name": "_dmarc.example.org", "value": "v=DMARC1; p=none; rua=mailto:dmarc@zbounce.net; pct=100" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Bad request" }
+        }
+      }
+    },
+
+    "/v1/domains/{domain}": {
+      "patch": {
+        "tags": ["Public"],
+        "summary": "Verify DNS TXT records of domain",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "example": "example.org"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verification result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "verified": { "type": "boolean" } }
+                },
+                "examples": {
+                  "ok":   { "summary": "Verified", "value": { "verified": true } },
+                  "fail": { "summary": "Still pending", "value": { "verified": false } }
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid request" },
+          "404": { "description": "Domain not found" }
+        }
+      }
+    },
+
+    "/v1/fast-verify": {
+      "post": {
+        "tags": ["Public"],
+        "summary": "Fast single-address verification",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FastVerifyRequest" },
+              "examples": {
+                "/v1/fast-verify": {
+                  "summary": "One address",
+                  "value": { "email": "john.doe@example.com" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmailReport" } } } },
+          "400": { "description": "Invalid JSON" },
+          "403": { "description": "Invalid key / exhausted quota" },
+          "429": { "description": "Server busy" }
+        }
+      }
+    },
+
+    "/v1/tasks": {
+      "post": {
+        "tags": ["Public"],
+        "summary": "Create verification task",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateTaskRequest" },
+              "examples": {
+                "simple": {
+                  "summary": "No webhook",
+                  "value": { "emails": ["alice@example.com","bob@yahoo.com"] }
+                },
+                "with_webhook_completed": {
+                  "summary": "Webhook on completion",
+                  "value": {
+                    "emails": ["john@example.com","jane@example.net"],
+                    "webhook": {
+                      "url": "https://myapp.com/hooks/status",
+                      "secret": "hmac_secret",
+                      "mode": "completed"
+                    }
+                  }
+                },
+                "with_webhook_results": {
+                  "summary": "Webhook with full results",
+                  "value": {
+                    "emails": ["a@ex.com","b@ex.net"],
+                    "webhook": {
+                      "url": "https://myapp.com/hooks/results",
+                      "mode": "results",
+                      "max_retries": 5,
+                      "timeout_ms": 8000
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Task created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TaskResponse" } } } },
+          "400": { "description": "Bad request" },
+          "403": { "description": "Quota exhausted / invalid key" }
+        }
+      }
+    },
+
+    "/v1/tasks/{task_id}": {
+      "get": {
+        "tags": ["Public"],
+        "summary": "Get verification task status",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          { "name": "task_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TaskStatusResponse" } } } },
+          "404": { "description": "Task not found" }
+        }
+      }
+    },
+
+    "/v1/tasks-results/{task_id}": {
+      "get": {
+        "tags": ["Public"],
+        "summary": "Paginated verification results",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          { "name": "task_id",  "in": "path",  "required": true, "schema": { "type": "string" } },
+          { "name": "page",     "in": "query", "schema": { "type": "integer", "default": 1, "minimum": 1 } },
+          { "name": "per_page", "in": "query", "schema": { "type": "integer", "default": 100, "minimum": 1, "maximum": 1000 } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedResults" } } } },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+
+    "/v1/send-batch": {
+      "post": {
+        "tags": ["Public"],
+        "summary": "Send templated e-mails to many recipients",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BatchEmail" },
+              "examples": {
+                "minimal": {
+                  "summary": "Plain-text only",
+                  "value": {
+                    "template": {
+                      "from":        "info@shop.com",
+                      "subject": "Hello {{title .name}}",
+                      "text":    "Your code is {{upper .code}}"
+                    },
+                    "recipients": [
+                      { "addr": "john@example.com", "data": { "name": "John", "code": "abc" } },
+                      { "addr": "jane@example.net", "data": { "name": "Jane", "code": "xyz" } }
+                    ],
+                    "validate": true,
+                    "skip_disposable": true,
+                    "skip_risky": false,
+                    "tags": ["news", "weekly"]
+                  }
+                },
+
+                "with_html": {
+                  "summary": "Plain-text and HTML",
+                  "value": {
+                    "template": {
+                      "from":        "info@shop.com",
+                      "subject": "Welcome, {{.name}}",
+                      "text":    "Hello {{.name}}, thanks for joining!",
+                      "html":    "<h1>Hello {{.name}}</h1><p>Thanks for joining!</p>"
+                    },
+                    "recipients": [
+                      { "addr": "user1@example.com", "data": { "name": "Alice" } }
+                    ],
+                    "validate": true,
+                    "skip_disposable": true,
+                    "skip_risky": false,
+                    "tags": ["news", "weekly"]
+                  }
+                },
+
+                "with_attachment": {
+                  "summary": "PDF attachment",
+                  "value": {
+                    "template": {
+                      "from":        "billing@shop.com",
+                      "subject": "Invoice for {{.month}}",
+                      "text":    "Attached is your invoice for {{.month}}.",
+                      "attachments": [
+                        {
+                          "name": "invoice.pdf",
+                          "mime": "application/pdf",
+                          "b64":  "JVBERi0xLjQK..."
+                        }
+                      ]
+                    },
+                    "recipients": [
+                      { "addr": "customer@example.com", "data": { "month": "July" } }
+                    ],
+                    "validate": true,
+                    "skip_disposable": true,
+                    "skip_risky": false,
+                    "tags": []
+                  }
+                },
+
+                "batch_with_webhook_completed": {
+                  "summary": "Webhook on completion",
+                  "value": {
+                    "template": {
+                      "from":        "news@service.com",
+                      "subject": "Weekly update",
+                      "text":    "Hi {{.name}}, here’s your update"
+                    },
+                    "recipients": [
+                      { "addr": "u@example.com", "data": { "name": "User" } }
+                    ],
+                    "validate": true,
+                    "skip_disposable": true,
+                    "skip_risky": false,
+                    "webhook": {
+                      "url":         "https://myapp.com/hooks/send-complete",
+                      "event_url": "https://myapp.com/hooks/send-events",
+                      "secret":      "hmac_secret_key",
+                      "mode":        "completed",
+                      "max_retries": 3,
+                      "timeout_ms":  5000
+                    },
+                    "tags": ["news", "weekly"]
+                  }
+                },
+
+                "batch_with_webhook_results": {
+                  "summary": "Webhook with full results",
+                  "value": {
+                    "template": {
+                      "from":        "promo@service.com",
+                      "subject": "Promo {{.promo}} just for you",
+                      "text":    "Details inside"
+                    },
+                    "recipients": [
+                      { "addr": "bob@example.com", "data": { "promo": "VIP" } }
+                    ],
+                    "validate": true,
+                    "skip_disposable": true,
+                    "skip_risky": false,
+                    "webhook": {
+                      "url":         "https://myapp.com/hooks/send-results",
+                      "mode":        "results",
+                      "max_retries": 5,
+                      "timeout_ms":  8000
+                    },
+                    "tags": ["news", "weekly"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task accepted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BatchResponse" },
+                "examples": {
+                  "accepted": {
+                    "summary": "5 accepted / 1 skipped",
+                    "value": {
+                      "task_id":  "6b2c0c5a-9f4d-4fa8-9d4c-6b57dd12a4d1",
+                      "accepted": 5,
+                      "skipped":  1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid template/request format. Inactive sender domain" },
+          "403": { "description": "Quota exhausted or invalid API key" }
+        }
+      }
+    },
+
+    "/v1/scheduled-mailings": {
+      "post": {
+        "tags": ["Public"],
+        "summary": "Create a new scheduled mailing",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateScheduledMailingReq" },
+              "examples": {
+                "one_time": {
+                  "summary": "One-time scheduled mailing (USA)",
+                  "value": {
+                    "template": {
+                      "from": "info@example.com",
+                      "subject": "Hello {{.name}}",
+                      "text": "Hi, {{.name}}!",
+                      "html": "<p>Hi, {{.name}}</p>"
+                    },
+                    "recipients": ["user1@us-example.com", "user2@us-example.com"],
+                    "scheduled_time": "2023-10-10T16:00:00Z",
+                    "timezone": "America/New_York",
+                    "recurring": false,
+                    "hook": {
+                      "url": "https://webhook.example.com/notify",
+                      "secret": "example_secret",
+                      "mode": "completed",
+                      "max_retries": 3,
+                      "timeout_ms": 5000
+                    },
+                    "tags": ["news", "weekly"]
+                  }
+                },
+                "recurring": {
+                  "summary": "Recurring scheduled mailing (Canada)",
+                  "value": {
+                    "template": {
+                      "from": "newsletter@example.com",
+                      "subject": "Weekly Newsletter",
+                      "text": "Hello {{.name}}, here is your weekly update.",
+                      "html": "<h1>Hello {{.name}}</h1><p>Here is your weekly update.</p>"
+                    },
+                    "recipients": ["subscriber@ca-example.com"],
+                    "scheduled_time": "2023-10-11T12:00:00Z",
+                    "timezone": "America/Toronto",
+                    "recurring": true,
+                    "recurrence_interval": "1 week",
+                    "hook": {
+                      "url": "https://webhook.example.com/newsletter",
+                      "mode": "results",
+                      "max_retries": 5,
+                      "timeout_ms": 8000
+                    },
+                    "tags": ["news", "weekly"]
+                  }
+                },
+                "europe_example": {
+                  "summary": "One-time scheduled mailing (Europe)",
+                  "value": {
+                    "template": {
+                      "from": "info@euro-example.com",
+                      "subject": "Greetings {{.name}}",
+                      "text": "Hello {{.name}}, check our new offers!",
+                      "html": "<p>Hello {{.name}}, check our new offers!</p>"
+                    },
+                    "recipients": ["customer@eu-example.com"],
+                    "scheduled_time": "2023-10-12T10:00:00Z",
+                    "timezone": "Europe/Paris",
+                    "recurring": false,
+                    "hook": {
+                      "url": "https://webhook.example.com/eu-notify",
+                      "secret": "europe_secret",
+                      "mode": "completed",
+                      "max_retries": 2,
+                      "timeout_ms": 4000
+                    },
+                    "tags": []
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Scheduled mailing created successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreateScheduledMailingResp" },
+                "examples": {
+                  "success": {
+                    "summary": "Created scheduled mailing",
+                    "value": {
+                      "mailing": {
+                        "id": "e7f3a1b2-3c4d-5e6f-7890-ab12cd34ef56",
+                        "api_key": "test-key",
+                        "template": {
+                          "from": "info@example.com",
+                          "reply_to": "",
+                          "subject": "Hello {{.name}}",
+                          "text": "Hi, {{.name}}!",
+                          "html": "<p>Hi, {{.name}}</p>",
+                          "attachments": []
+                        },
+                        "recipients": ["user1@us-example.com", "user2@us-example.com"],
+                        "scheduled_time": "2023-10-10T16:00:00Z",
+                        "timezone": "America/New_York",
+                        "recurring": false,
+                        "recurrence_interval": "",
+                        "credits": 2,
+                        "status": "pending",
+                        "hook": {
+                          "url": "https://webhook.example.com/notify",
+                          "secret": "example_secret",
+                          "mode": "completed",
+                          "max_retries": 3,
+                          "timeout_ms": 5000
+                        },
+                        "created_at": 1696939200,
+                        "updated_at": 1696939200
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid input" },
+          "403": { "description": "Insufficient credits or scheduled mailing quota exceeded" }
+        }
+      },
+      "get": {
+        "tags": ["Public"],
+        "summary": "List scheduled mailings",
+        "security": [{ "ApiKeyAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "List of scheduled mailings",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListScheduledMailingsResp" },
+                "examples": {
+                  "example": {
+                    "summary": "A list with a single scheduled mailing",
+                    "value": {
+                      "mailings": [
+                        {
+                          "id": "e7f3a1b2-3c4d-5e6f-7890-ab12cd34ef56",
+                          "api_key": "test-key",
+                          "template": {
+                            "from": "info@example.com",
+                            "reply_to": "",
+                            "subject": "Hello {{.name}}",
+                            "text": "Hi, {{.name}}!",
+                            "html": "<p>Hi, {{.name}}</p>",
+                            "attachments": []
+                          },
+                          "recipients": ["user1@us-example.com"],
+                          "scheduled_time": "2023-10-10T16:00:00Z",
+                          "timezone": "America/New_York",
+                          "recurring": false,
+                          "recurrence_interval": "",
+                          "credits": 2,
+                          "status": "pending",
+                          "hook": {},
+                          "created_at": 1696939200,
+                          "updated_at": 1696939200
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scheduled-mailings/{mailing_id}": {
+      "get": {
+        "tags": ["Public"],
+        "summary": "Get a scheduled mailing by ID",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          { "name": "mailing_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scheduled mailing details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GetScheduledMailingResp" },
+                "examples": {
+                  "example": {
+                    "summary": "Details of a scheduled mailing",
+                    "value": {
+                      "mailing": {
+                        "id": "e7f3a1b2-3c4d-5e6f-7890-ab12cd34ef56",
+                        "api_key": "test-key",
+                        "template": {
+                          "from": "info@example.com",
+                          "reply_to": "",
+                          "subject": "Hello {{.name}}",
+                          "text": "Hi, {{.name}}!",
+                          "html": "<p>Hi, {{.name}}</p>",
+                          "attachments": []
+                        },
+                        "recipients": ["user1@us-example.com"],
+                        "scheduled_time": "2023-10-10T16:00:00Z",
+                        "timezone": "America/New_York",
+                        "recurring": false,
+                        "recurrence_interval": "",
+                        "credits": 2,
+                        "status": "pending",
+                        "hook": {},
+                        "created_at": 1696939200,
+                        "updated_at": 1696939200
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Scheduled mailing not found" }
+        }
+      },
+      "put": {
+        "tags": ["Public"],
+        "summary": "Update a scheduled mailing",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          { "name": "mailing_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateScheduledMailingReq" },
+              "examples": {
+                "example": {
+                  "summary": "Update mailing details (Canadian example)",
+                  "value": {
+                    "mailing_id": "e7f3a1b2-3c4d-5e6f-7890-ab12cd34ef56",
+                    "template": {
+                      "from": "info@newsletter.ca",
+                      "reply_to": "",
+                      "subject": "Updated Newsletter",
+                      "text": "Hello, check out our latest update!",
+                      "html": "<p>Hello, check out our latest update!</p>"
+                    },
+                    "recipients": ["customer@ca-example.com", "user@ca-example.com"],
+                    "scheduled_time": "2023-10-11T12:00:00Z",
+                    "timezone": "America/Toronto",
+                    "recurring": true,
+                    "recurrence_interval": "1 week",
+                    "hook": {
+                      "url": "https://webhook.example.com/ca-notify",
+                      "secret": "ca_secret",
+                      "mode": "results",
+                      "max_retries": 5,
+                      "timeout_ms": 8000
+                    },
+                    "tags": ["sale", "summer"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Scheduled mailing updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UpdateScheduledMailingResp" }
+              }
+            }
+          },
+          "400": { "description": "Invalid input" }
+        }
+      },
+      "delete": {
+        "tags": ["Public"],
+        "summary": "Delete a scheduled mailing",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          { "name": "mailing_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scheduled mailing deleted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeleteScheduledMailingResp" },
+                "examples": {
+                  "example": {
+                    "summary": "Deletion successful",
+                    "value": { "status": "deleted" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Scheduled mailing not found" }
+        }
+      }
+    }
+  },
+
+  "components": {
+    "schemas": {
+      "FastVerifyRequest": {
+        "type": "object",
+        "required": ["email"],
+        "properties": { "email": {
+          "type": "string",
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$"
+        }}
+      },
+
+      "EmailReport": {
+        "type": "object",
+        "properties": {
+          "email":           { "type": "string" },
+          "valid":           { "type": "boolean" },
+          "disposable":      { "type": "boolean" },
+          "exists":          { "type": "boolean" },
+          "permanent_error": { "type": "boolean" },
+          "error_category":  { "type": "string" },
+          "ttl":             { "type": "integer", "description": "Retry-after (seconds) for temporary errors" },
+          "accept_all":      { "type": "boolean", "description": "True when the domain is catch-all" }
+        }
+      },
+
+      "BasicAuth": {
+        "type": "object",
+        "properties": {
+          "user":     { "type": "string" },
+          "password": { "type": "string" }
+        }
+      },
+
+      "WebhookConfig": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url":         { "type": "string", "format": "uri" },
+          "secret":      { "type": "string" },
+          "mode":        { "type": "string", "enum": ["completed", "results"], "default": "completed" },
+          "max_retries": { "type": "integer", "minimum": 0, "default": 3 },
+          "timeout_ms":  { "type": "integer", "minimum": 1000, "default": 5000 },
+          "dlq_url":     { "type": "string", "format": "uri" },
+          "event_url":   {
+            "type": "string",
+            "format": "uri",
+            "description": "Optional URL to receive open/unsubscribe event webhooks"
+          },
+          "basic_auth":  { "$ref": "#/components/schemas/BasicAuth" }
+        }
+      },
+
+      "APIKeyInfo": {
+        "type": "object",
+        "properties": {
+          "api_key":          { "type": "string" },
+          "key_type":         { "type": "string", "enum": ["pay_as_you_go", "monthly"] },
+          "remaining_checks": { "type": "integer" },
+          "expires_at":       { "type": "string", "format": "date-time" }
+        }
+      },
+
+      "CreateTaskRequest": {
+        "type": "object",
+        "required": ["emails"],
+        "properties": {
+          "emails": {
+            "type": "array",
+            "items": { "type": "string", "format": "email" },
+            "minItems": 1,
+            "maxItems": 10000
+          },
+          "webhook": { "$ref": "#/components/schemas/WebhookConfig" }
+        }
+      },
+
+      "TaskResponse": {
+        "type": "object",
+        "properties": {
+          "task_id":  { "type": "string" },
+          "accepted": { "type": "integer" },
+          "skipped":  { "type": "integer" }
+        }
+      },
+
+      "TaskStatusResponse": {
+        "type": "object",
+        "properties": {
+          "status":      { "type": "string" },
+          "total":       { "type": "integer" },
+          "done":        { "type": "integer" },
+          "total_pages": { "type": "integer" },
+          "created_at":  { "type": "integer", "description": "Unix timestamp" },
+          "key":         { "$ref": "#/components/schemas/KeySummary" },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Tags associated with the task"
+          }
+        }
+      },
+
+      "KeySummary": {
+        "type": "object",
+        "properties": {
+          "type":       { "type": "string", "enum": ["pay_as_you_go", "monthly"] },
+          "remaining":  { "type": "integer" },
+          "reserved":   { "type": "integer" },
+          "used":       { "type": "integer" },
+          "expires_at": { "type": "integer", "description": "unix ts" }
+        }
+      },
+
+      "DomainRegisterReq": {
+        "type": "object",
+        "required": ["domain"],
+        "properties": { "domain": { "type": "string" } }
+      },
+
+      "DomainInfo": {
+        "type": "object",
+        "properties": {
+          "domain": { "type": "string" },
+          "status": { "type": "string" },
+          "expires_at": { "type": "integer" },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name":  { "type": "string" },
+                "value": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+
+      "SendEmailReq": {
+        "type": "object",
+        "required": ["from", "to"],
+        "properties": {
+          "from":  { "type": "string", "format": "email" },
+          "to":    { "type": "array", "items": { "type": "string", "format": "email" } },
+          "subject": { "type": "string" },
+          "text":    { "type": "string" },
+          "html":    { "type": "string" },
+          "validate":        { "type": "boolean", "default": false },
+          "skip_disposable": { "type": "boolean", "default": false },
+          "skip_accept_all": { "type": "boolean", "default": false }
+        }
+      },
+
+
+      "Attachment": {
+        "type": "object",
+        "required": ["name", "mime", "b64"],
+        "properties": {
+          "name": { "type": "string", "description": "Attachment filename" },
+          "mime": { "type": "string", "description": "MIME type, e.g. application/pdf" },
+          "b64":  { "type": "string", "description": "Base-64 encoded file content" }
+        }
+      },
+
+      "Recipient": {
+        "type": "object",
+        "required": ["addr"],
+        "properties": {
+          "addr": { "type": "string", "format": "email" },
+          "data": {
+            "type": "object",
+            "description": "Key-value map used for template variables",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      },
+
+      "Template": {
+        "type": "object",
+        "required": ["from", "subject", "text"],
+        "properties": {
+          "from":        { "type": "string", "format": "email" },
+          "reply_to":    { "type": "string", "format": "email" },
+          "subject": { "type": "string", "description": "Go text/template syntax" },
+          "text":    { "type": "string" },
+          "html":    { "type": "string" },
+          "attachments": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Attachment" },
+            "description": "Optional list of attachments"
+          }
+        }
+      },
+
+      "BatchEmail": {
+        "type": "object",
+        "required": ["template", "recipients"],
+        "properties": {
+          "template":   { "$ref": "#/components/schemas/Template" },
+          "recipients": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Recipient" },
+            "minItems": 1,
+            "maxItems": 10000
+          },
+          "validate":        { "type": "boolean", "description": "Probe mailbox existence via SMTP",  "default": false },
+          "skip_disposable": { "type": "boolean", "description": "Drop addresses on disposable domains", "default": false },
+          "skip_risky":      { "type": "boolean", "description": "Drop domains detected as accept-all `risky` by SMTP probe","default": false },
+          "priority":        { "type": "boolean", "default": false },
+          "hook":            { "$ref": "#/components/schemas/WebhookConfig" },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional tags associated with this batch task"
+          }
+        },
+        "description": "Task for asynchronous batch sending"
+      },
+
+      "BatchResponse": {
+        "type": "object",
+        "properties": {
+          "task_id":  { "type": "string" },
+          "accepted": { "type": "integer" },
+          "skipped":  { "type": "integer" }
+        }
+      },
+      "ScheduledMailing": {
+        "type": "object",
+        "description": "A scheduled mailing object representing a mailing job scheduled for future execution. It includes details such as the email template, recipient list, scheduled time (in ISO8601 UTC), client timezone, recurring options, and the number of credits reserved automatically (calculated as the count of recipients). It also contains the current status, any associated webhook configuration, and timestamps.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier (UUID) of the scheduled mailing."
+          },
+          "api_key": {
+            "type": "string",
+            "description": "Owner's API key. This field may be omitted in client responses if not required."
+          },
+          "template": {
+            "$ref": "#/components/schemas/Template",
+            "description": "The email template used for the mailing."
+          },
+          "recipients": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "List of recipient email addresses."
+          },
+          "scheduled_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Scheduled start time in ISO8601 format (UTC)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The client's timezone, e.g., \"America/New_York\", \"America/Toronto\", or \"Europe/Paris\"."
+          },
+          "recurring": {
+            "type": "boolean",
+            "description": "Indicates whether the mailing is recurring."
+          },
+          "recurrence_interval": {
+            "type": "string",
+            "description": "Recurrence interval (e.g., \"1 week\"); applicable if 'recurring' is true."
+          },
+          "credits": {
+            "type": "integer",
+            "description": "Number of credits automatically reserved for the mailing (calculated as the number of recipients)."
+          },
+          "status": {
+            "type": "string",
+            "description": "Status of the mailing: e.g., \"pending\", \"running\", \"paused_due_to_insufficient_credits\", \"completed\", or \"cancelled\"."
+          },
+          "hook": {
+            "$ref": "#/components/schemas/WebhookConfig",
+            "description": "Webhook configuration for asynchronous notifications."
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional tags associated with this scheduled mailing."
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Creation timestamp (Unix timestamp)."
+          },
+          "updated_at": {
+            "type": "integer",
+            "description": "Last update timestamp (Unix timestamp)."
+          }
+        },
+        "required": ["id", "template", "recipients", "scheduled_time", "timezone", "recurring", "credits", "status", "created_at", "updated_at"]
+      },
+      "CreateScheduledMailingReq": {
+        "type": "object",
+        "description": "Request schema for creating a new scheduled mailing. Contains the email template, recipient list, client-provided scheduled time (ISO8601), timezone, recurring flag, recurrence interval (if applicable), number of credits to reserve, and an optional webhook configuration.",
+        "properties": {
+          "template": { "$ref": "#/components/schemas/Template" },
+          "recipients": {
+            "type": "array",
+            "items": { "type": "string", "format": "email" },
+            "description": "List of recipient email addresses."
+          },
+          "scheduled_time": {
+            "type": "string",
+            "description": "Client-provided scheduled start time in ISO8601 format (with timezone)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The client's timezone (e.g., 'America/New_York', 'America/Toronto', 'Europe/Paris')."
+          },
+          "recurring": {
+            "type": "boolean",
+            "description": "Indicates whether the mailing is recurring."
+          },
+          "recurrence_interval": {
+            "type": "string",
+            "description": "Interval for recurring mailings (e.g., '1 week')."
+          },
+          "hook": {
+            "$ref": "#/components/schemas/WebhookConfig",
+            "description": "Optional webhook configuration for asynchronous notifications."
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional tags associated with this scheduled mailing."
+          }
+        },
+        "required": ["template", "recipients", "scheduled_time", "timezone", "recurring", "credits"]
+      },
+      "CreateScheduledMailingResp": {
+        "type": "object",
+        "description": "Response schema returned upon successful creation of a scheduled mailing. Contains the newly created scheduled mailing object.",
+        "properties": {
+          "mailing": {
+            "$ref": "#/components/schemas/ScheduledMailing"
+          }
+        }
+      },
+      "GetScheduledMailingResp": {
+        "type": "object",
+        "description": "Response schema for retrieving the details of a specific scheduled mailing.",
+        "properties": {
+          "mailing": {
+            "$ref": "#/components/schemas/ScheduledMailing"
+          }
+        }
+      },
+      "UpdateScheduledMailingReq": {
+        "type": "object",
+        "description": "Request schema for updating an existing scheduled mailing. All fields are optional; only provided fields will be updated.",
+        "properties": {
+          "mailing_id": {
+            "type": "string",
+            "description": "Unique identifier of the scheduled mailing."
+          },
+          "template": {
+            "$ref": "#/components/schemas/Template",
+            "description": "Updated email template."
+          },
+          "recipients": {
+            "type": "array",
+            "items": { "type": "string", "format": "email" },
+            "description": "Updated list of recipient email addresses."
+          },
+          "scheduled_time": {
+            "type": "string",
+            "description": "Updated scheduled start time in ISO8601 format."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Updated client timezone."
+          },
+          "recurring": {
+            "type": "boolean",
+            "description": "Updated recurring flag."
+          },
+          "recurrence_interval": {
+            "type": "string",
+            "description": "Updated recurrence interval (e.g., '1 week')."
+          },
+          "credits": {
+            "type": "integer",
+            "description": "Updated number of credits to reserve."
+          },
+          "hook": {
+            "$ref": "#/components/schemas/WebhookConfig",
+            "description": "Updated webhook configuration."
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Updated tags associated with this scheduled mailing."
+          }
+        }
+      },
+      "UpdateScheduledMailingResp": {
+        "type": "object",
+        "description": "Response schema for updating a scheduled mailing. Returns the modified scheduled mailing.",
+        "properties": {
+          "mailing": {
+            "$ref": "#/components/schemas/ScheduledMailing"
+          }
+        }
+      },
+      "DeleteScheduledMailingResp": {
+        "type": "object",
+        "description": "Response schema confirming the successful deletion of a scheduled mailing.",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Confirmation message, typically 'deleted'.",
+            "example": "deleted"
+          }
+        }
+      },
+      "ListScheduledMailingsResp": {
+        "type": "object",
+        "description": "Response schema for listing scheduled mailings. Returns an array of scheduled mailing objects.",
+        "properties": {
+          "mailings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduledMailing"
+            },
+            "description": "List of scheduled mailings associated with the authenticated API key."
+          }
+        }
+      },
+      "PaginatedResults": {
+        "type": "object",
+        "properties": {
+          "page":  { "type": "integer" },
+          "total": { "type": "integer" },
+          "data": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/EmailReport" }
+          }
+        }
+      }
+    },
+
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    }
+  }
+}

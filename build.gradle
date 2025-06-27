@@ -6,7 +6,7 @@ plugins {
 }
 
 group   = 'net.zbounce'
-version = '1.0.0'                       // менять при релизах
+version = '3.1.0'
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
@@ -68,8 +68,8 @@ publishing {
                 builtBy("generatePomFileForMavenJavaPublication")
             }
             pom {
-                name        = 'ZBounce Email-Checker Java SDK'
-                description = 'Java client for ZBounce batch & real-time email verification API'
+                name        = 'ZBounce Email Engine Platform Java SDK'
+                description = 'Java client for ZBounce Email Engine Platform API'
                 url         = 'https://github.com/zbounce-net/email-checker-java'
 
                 licenses {

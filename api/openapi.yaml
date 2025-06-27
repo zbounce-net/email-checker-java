@@ -1,19 +1,142 @@
 openapi: 3.0.1
 info:
-  description: Batch and real-time email verification.
-  title: ZBounce Email-Checker API
-  version: 2.2.0
+  description: ZBounce Email Engine Platform API Reference
+  title: ZBounce Email Engine Platform
+  version: 3.1.0
 servers:
 - url: https://api.zbounce.net/
 tags:
-- description: User endpoints (require X-API-Key)
+- description: Customer-facing endpoints (X-API-Key)
   name: Public
 paths:
+  /v1/domains:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              examples:
+                sample:
+                  summary: Two domains
+                  value:
+                  - domain: example.org
+                    status: active
+                    expires_at: 1735689600
+                    records: []
+                  - domain: shop.com
+                    status: pending
+                    expires_at: 1735689600
+                    records:
+                    - name: shop.com
+                      value: v=spf1 ip4:203.0.113.5 include:spf.zbounce.net -all
+                    - name: zb1a2b3c4._domainkey.shop.com
+                      value: v=DKIM1; k=rsa; p=MIIBIjANB...
+                    - name: _dmarc.shop.com
+                      value: v=DMARC1; p=quarantine; rua=mailto:dmarc@zbounce.net;
+                        pct=100
+              schema:
+                items:
+                  $ref: '#/components/schemas/DomainInfo'
+                type: array
+          description: Array of registered domains
+      security:
+      - ApiKeyAuth: []
+      summary: List sender domains
+      tags:
+      - Public
+      x-accepts:
+      - application/json
+    post:
+      requestBody:
+        content:
+          application/json:
+            examples:
+              register:
+                summary: Register domain
+                value:
+                  domain: example.org
+            schema:
+              $ref: '#/components/schemas/DomainRegisterReq'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              examples:
+                records:
+                  summary: TXT setup required
+                  value:
+                    domain: example.org
+                    status: pending
+                    expires_at: 1735689600
+                    records:
+                    - name: example.org
+                      value: v=spf1 ip4:195.154.84.104 include:spf.zbounce.net -all
+                    - name: zb9c7fab1._domainkey.example.org
+                      value: v=DKIM1; k=rsa; p=MIIBIjANBg...
+                    - name: _dmarc.example.org
+                      value: v=DMARC1; p=none; rua=mailto:dmarc@zbounce.net; pct=100
+              schema:
+                $ref: '#/components/schemas/DomainInfo'
+          description: Registration info with TXT records
+        "400":
+          description: Bad request
+      security:
+      - ApiKeyAuth: []
+      summary: Register new sender domain
+      tags:
+      - Public
+      x-content-type: application/json
+      x-accepts:
+      - application/json
+  /v1/domains/{domain}:
+    patch:
+      parameters:
+      - example: example.org
+        explode: false
+        in: path
+        name: domain
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              examples:
+                ok:
+                  summary: Verified
+                  value:
+                    verified: true
+                fail:
+                  summary: Still pending
+                  value:
+                    verified: false
+              schema:
+                $ref: '#/components/schemas/_v1_domains__domain__patch_200_response'
+          description: Verification result
+        "400":
+          description: Invalid request
+        "404":
+          description: Domain not found
+      security:
+      - ApiKeyAuth: []
+      summary: Verify DNS TXT records of domain
+      tags:
+      - Public
+      x-accepts:
+      - application/json
   /v1/fast-verify:
     post:
       requestBody:
         content:
           application/json:
+            examples:
+              /v1/fast-verify:
+                summary: One address
+                value:
+                  email: john.doe@example.com
             schema:
               $ref: '#/components/schemas/FastVerifyRequest'
         required: true
@@ -32,7 +155,7 @@ paths:
           description: Server busy
       security:
       - ApiKeyAuth: []
-      summary: Fast single-email verification
+      summary: Fast single-address verification
       tags:
       - Public
       x-content-type: application/json
@@ -45,44 +168,32 @@ paths:
           application/json:
             examples:
               simple:
-                description: Verify two addresses; quota is reserved immediately.
-                summary: Minimal task (no webhook)
+                summary: No webhook
                 value:
                   emails:
                   - alice@example.com
                   - bob@yahoo.com
               with_webhook_completed:
-                description: Send a single notification when the task finishes.
-                summary: Task with webhook (completed mode)
+                summary: Webhook on completion
                 value:
                   emails:
                   - john@example.com
                   - jane@example.net
                   webhook:
-                    url: https://myapp.com/hooks/email-status
-                    secret: hmac_secret_key
+                    url: https://myapp.com/hooks/status
+                    secret: hmac_secret
                     mode: completed
-                    max_retries: 3
-                    timeout_ms: 5000
-                    basic_auth:
-                      user: hook-user
-                      password: hook-pass
               with_webhook_results:
-                description: "Full webhook configuration, HMAC signature and basic-auth."
-                summary: Task with webhook (results mode)
+                summary: Webhook with full results
                 value:
                   emails:
-                  - alice@example.com
-                  - bob@yahoo.com
+                  - a@ex.com
+                  - b@ex.net
                   webhook:
-                    url: https://myapp.com/hooks/email-results
-                    secret: s3cr3t_hmac_key
+                    url: https://myapp.com/hooks/results
                     mode: results
                     max_retries: 5
                     timeout_ms: 8000
-                    basic_auth:
-                      user: hook-user
-                      password: hook-pass
             schema:
               $ref: '#/components/schemas/CreateTaskRequest'
         required: true
@@ -90,13 +201,6 @@ paths:
         "200":
           content:
             application/json:
-              examples:
-                queued:
-                  summary: Task accepted
-                  value:
-                    task_id: cdb2c0c5-9f4d-4fa8-9d4c-6b57dd12a4d1
-                    accepted: 2
-                    skipped: 0
               schema:
                 $ref: '#/components/schemas/TaskResponse'
           description: Task created
@@ -106,7 +210,7 @@ paths:
           description: Quota exhausted / invalid key
       security:
       - ApiKeyAuth: []
-      summary: Create batch verification task
+      summary: Create verification task
       tags:
       - Public
       x-content-type: application/json
@@ -130,10 +234,10 @@ paths:
                 $ref: '#/components/schemas/TaskStatusResponse'
           description: OK
         "404":
-          description: Not found
+          description: Task not found
       security:
       - ApiKeyAuth: []
-      summary: Get task status
+      summary: Get verification task status
       tags:
       - Public
       x-accepts:
@@ -178,9 +282,453 @@ paths:
           description: Not found
       security:
       - ApiKeyAuth: []
-      summary: Paginated task results
+      summary: Paginated verification results
       tags:
       - Public
+      x-accepts:
+      - application/json
+  /v1/send-batch:
+    post:
+      requestBody:
+        content:
+          application/json:
+            examples:
+              minimal:
+                summary: Plain-text only
+                value:
+                  template:
+                    from: info@shop.com
+                    subject: "Hello {{title .name}}"
+                    text: "Your code is {{upper .code}}"
+                  recipients:
+                  - addr: john@example.com
+                    data:
+                      name: John
+                      code: abc
+                  - addr: jane@example.net
+                    data:
+                      name: Jane
+                      code: xyz
+                  validate: true
+                  skip_disposable: true
+                  skip_risky: false
+                  tags:
+                  - news
+                  - weekly
+              with_html:
+                summary: Plain-text and HTML
+                value:
+                  template:
+                    from: info@shop.com
+                    subject: "Welcome, {{.name}}"
+                    text: "Hello {{.name}}, thanks for joining!"
+                    html: "<h1>Hello {{.name}}</h1><p>Thanks for joining!</p>"
+                  recipients:
+                  - addr: user1@example.com
+                    data:
+                      name: Alice
+                  validate: true
+                  skip_disposable: true
+                  skip_risky: false
+                  tags:
+                  - news
+                  - weekly
+              with_attachment:
+                summary: PDF attachment
+                value:
+                  template:
+                    from: billing@shop.com
+                    subject: "Invoice for {{.month}}"
+                    text: "Attached is your invoice for {{.month}}."
+                    attachments:
+                    - name: invoice.pdf
+                      mime: application/pdf
+                      b64: JVBERi0xLjQK...
+                  recipients:
+                  - addr: customer@example.com
+                    data:
+                      month: July
+                  validate: true
+                  skip_disposable: true
+                  skip_risky: false
+                  tags: []
+              batch_with_webhook_completed:
+                summary: Webhook on completion
+                value:
+                  template:
+                    from: news@service.com
+                    subject: Weekly update
+                    text: "Hi {{.name}}, here’s your update"
+                  recipients:
+                  - addr: u@example.com
+                    data:
+                      name: User
+                  validate: true
+                  skip_disposable: true
+                  skip_risky: false
+                  webhook:
+                    url: https://myapp.com/hooks/send-complete
+                    event_url: https://myapp.com/hooks/send-events
+                    secret: hmac_secret_key
+                    mode: completed
+                    max_retries: 3
+                    timeout_ms: 5000
+                  tags:
+                  - news
+                  - weekly
+              batch_with_webhook_results:
+                summary: Webhook with full results
+                value:
+                  template:
+                    from: promo@service.com
+                    subject: "Promo {{.promo}} just for you"
+                    text: Details inside
+                  recipients:
+                  - addr: bob@example.com
+                    data:
+                      promo: VIP
+                  validate: true
+                  skip_disposable: true
+                  skip_risky: false
+                  webhook:
+                    url: https://myapp.com/hooks/send-results
+                    mode: results
+                    max_retries: 5
+                    timeout_ms: 8000
+                  tags:
+                  - news
+                  - weekly
+            schema:
+              $ref: '#/components/schemas/BatchEmail'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              examples:
+                accepted:
+                  summary: 5 accepted / 1 skipped
+                  value:
+                    task_id: 6b2c0c5a-9f4d-4fa8-9d4c-6b57dd12a4d1
+                    accepted: 5
+                    skipped: 1
+              schema:
+                $ref: '#/components/schemas/BatchResponse'
+          description: Task accepted
+        "400":
+          description: Invalid template/request format. Inactive sender domain
+        "403":
+          description: Quota exhausted or invalid API key
+      security:
+      - ApiKeyAuth: []
+      summary: Send templated e-mails to many recipients
+      tags:
+      - Public
+      x-content-type: application/json
+      x-accepts:
+      - application/json
+  /v1/scheduled-mailings:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              examples:
+                example:
+                  summary: A list with a single scheduled mailing
+                  value:
+                    mailings:
+                    - id: e7f3a1b2-3c4d-5e6f-7890-ab12cd34ef56
+                      api_key: test-key
+                      template:
+                        from: info@example.com
+                        reply_to: ""
+                        subject: "Hello {{.name}}"
+                        text: "Hi, {{.name}}!"
+                        html: "<p>Hi, {{.name}}</p>"
+                        attachments: []
+                      recipients:
+                      - user1@us-example.com
+                      scheduled_time: 2023-10-10T16:00:00Z
+                      timezone: America/New_York
+                      recurring: false
+                      recurrence_interval: ""
+                      credits: 2
+                      status: pending
+                      hook: {}
+                      created_at: 1696939200
+                      updated_at: 1696939200
+              schema:
+                $ref: '#/components/schemas/ListScheduledMailingsResp'
+          description: List of scheduled mailings
+      security:
+      - ApiKeyAuth: []
+      summary: List scheduled mailings
+      tags:
+      - Public
+      x-accepts:
+      - application/json
+    post:
+      requestBody:
+        content:
+          application/json:
+            examples:
+              one_time:
+                summary: One-time scheduled mailing (USA)
+                value:
+                  template:
+                    from: info@example.com
+                    subject: "Hello {{.name}}"
+                    text: "Hi, {{.name}}!"
+                    html: "<p>Hi, {{.name}}</p>"
+                  recipients:
+                  - user1@us-example.com
+                  - user2@us-example.com
+                  scheduled_time: 2023-10-10T16:00:00Z
+                  timezone: America/New_York
+                  recurring: false
+                  hook:
+                    url: https://webhook.example.com/notify
+                    secret: example_secret
+                    mode: completed
+                    max_retries: 3
+                    timeout_ms: 5000
+                  tags:
+                  - news
+                  - weekly
+              recurring:
+                summary: Recurring scheduled mailing (Canada)
+                value:
+                  template:
+                    from: newsletter@example.com
+                    subject: Weekly Newsletter
+                    text: "Hello {{.name}}, here is your weekly update."
+                    html: "<h1>Hello {{.name}}</h1><p>Here is your weekly update.</p>"
+                  recipients:
+                  - subscriber@ca-example.com
+                  scheduled_time: 2023-10-11T12:00:00Z
+                  timezone: America/Toronto
+                  recurring: true
+                  recurrence_interval: 1 week
+                  hook:
+                    url: https://webhook.example.com/newsletter
+                    mode: results
+                    max_retries: 5
+                    timeout_ms: 8000
+                  tags:
+                  - news
+                  - weekly
+              europe_example:
+                summary: One-time scheduled mailing (Europe)
+                value:
+                  template:
+                    from: info@euro-example.com
+                    subject: "Greetings {{.name}}"
+                    text: "Hello {{.name}}, check our new offers!"
+                    html: "<p>Hello {{.name}}, check our new offers!</p>"
+                  recipients:
+                  - customer@eu-example.com
+                  scheduled_time: 2023-10-12T10:00:00Z
+                  timezone: Europe/Paris
+                  recurring: false
+                  hook:
+                    url: https://webhook.example.com/eu-notify
+                    secret: europe_secret
+                    mode: completed
+                    max_retries: 2
+                    timeout_ms: 4000
+                  tags: []
+            schema:
+              $ref: '#/components/schemas/CreateScheduledMailingReq'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              examples:
+                success:
+                  summary: Created scheduled mailing
+                  value:
+                    mailing:
+                      id: e7f3a1b2-3c4d-5e6f-7890-ab12cd34ef56
+                      api_key: test-key
+                      template:
+                        from: info@example.com
+                        reply_to: ""
+                        subject: "Hello {{.name}}"
+                        text: "Hi, {{.name}}!"
+                        html: "<p>Hi, {{.name}}</p>"
+                        attachments: []
+                      recipients:
+                      - user1@us-example.com
+                      - user2@us-example.com
+                      scheduled_time: 2023-10-10T16:00:00Z
+                      timezone: America/New_York
+                      recurring: false
+                      recurrence_interval: ""
+                      credits: 2
+                      status: pending
+                      hook:
+                        url: https://webhook.example.com/notify
+                        secret: example_secret
+                        mode: completed
+                        max_retries: 3
+                        timeout_ms: 5000
+                      created_at: 1696939200
+                      updated_at: 1696939200
+              schema:
+                $ref: '#/components/schemas/CreateScheduledMailingResp'
+          description: Scheduled mailing created successfully
+        "400":
+          description: Invalid input
+        "403":
+          description: Insufficient credits or scheduled mailing quota exceeded
+      security:
+      - ApiKeyAuth: []
+      summary: Create a new scheduled mailing
+      tags:
+      - Public
+      x-content-type: application/json
+      x-accepts:
+      - application/json
+  /v1/scheduled-mailings/{mailing_id}:
+    delete:
+      parameters:
+      - explode: false
+        in: path
+        name: mailing_id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              examples:
+                example:
+                  summary: Deletion successful
+                  value:
+                    status: deleted
+              schema:
+                $ref: '#/components/schemas/DeleteScheduledMailingResp'
+          description: Scheduled mailing deleted
+        "404":
+          description: Scheduled mailing not found
+      security:
+      - ApiKeyAuth: []
+      summary: Delete a scheduled mailing
+      tags:
+      - Public
+      x-accepts:
+      - application/json
+    get:
+      parameters:
+      - explode: false
+        in: path
+        name: mailing_id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              examples:
+                example:
+                  summary: Details of a scheduled mailing
+                  value:
+                    mailing:
+                      id: e7f3a1b2-3c4d-5e6f-7890-ab12cd34ef56
+                      api_key: test-key
+                      template:
+                        from: info@example.com
+                        reply_to: ""
+                        subject: "Hello {{.name}}"
+                        text: "Hi, {{.name}}!"
+                        html: "<p>Hi, {{.name}}</p>"
+                        attachments: []
+                      recipients:
+                      - user1@us-example.com
+                      scheduled_time: 2023-10-10T16:00:00Z
+                      timezone: America/New_York
+                      recurring: false
+                      recurrence_interval: ""
+                      credits: 2
+                      status: pending
+                      hook: {}
+                      created_at: 1696939200
+                      updated_at: 1696939200
+              schema:
+                $ref: '#/components/schemas/GetScheduledMailingResp'
+          description: Scheduled mailing details
+        "404":
+          description: Scheduled mailing not found
+      security:
+      - ApiKeyAuth: []
+      summary: Get a scheduled mailing by ID
+      tags:
+      - Public
+      x-accepts:
+      - application/json
+    put:
+      parameters:
+      - explode: false
+        in: path
+        name: mailing_id
+        required: true
+        schema:
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            examples:
+              example:
+                summary: Update mailing details (Canadian example)
+                value:
+                  mailing_id: e7f3a1b2-3c4d-5e6f-7890-ab12cd34ef56
+                  template:
+                    from: info@newsletter.ca
+                    reply_to: ""
+                    subject: Updated Newsletter
+                    text: "Hello, check out our latest update!"
+                    html: "<p>Hello, check out our latest update!</p>"
+                  recipients:
+                  - customer@ca-example.com
+                  - user@ca-example.com
+                  scheduled_time: 2023-10-11T12:00:00Z
+                  timezone: America/Toronto
+                  recurring: true
+                  recurrence_interval: 1 week
+                  hook:
+                    url: https://webhook.example.com/ca-notify
+                    secret: ca_secret
+                    mode: results
+                    max_retries: 5
+                    timeout_ms: 8000
+                  tags:
+                  - sale
+                  - summer
+            schema:
+              $ref: '#/components/schemas/UpdateScheduledMailingReq'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateScheduledMailingResp'
+          description: Scheduled mailing updated
+        "400":
+          description: Invalid input
+      security:
+      - ApiKeyAuth: []
+      summary: Update a scheduled mailing
+      tags:
+      - Public
+      x-content-type: application/json
       x-accepts:
       - application/json
 components:
@@ -248,6 +796,7 @@ components:
         secret: secret
         timeout_ms: 1000
         url: https://openapi-generator.tech
+        event_url: https://openapi-generator.tech
       properties:
         url:
           format: uri
@@ -271,6 +820,10 @@ components:
         dlq_url:
           format: uri
           type: string
+        event_url:
+          description: Optional URL to receive open/unsubscribe event webhooks
+          format: uri
+          type: string
         basic_auth:
           $ref: '#/components/schemas/BasicAuth'
       required:
@@ -291,41 +844,6 @@ components:
           format: date-time
           type: string
       type: object
-    CreateKeyRequest:
-      properties:
-        type:
-          enum:
-          - pay_as_you_go
-          - monthly
-          type: string
-        initial_checks:
-          minimum: 1
-          type: integer
-        validity_days:
-          minimum: 1
-          type: integer
-      required:
-      - initial_checks
-      - type
-      - validity_days
-      type: object
-    UpdateKeyRequest:
-      properties:
-        add_checks:
-          minimum: 1
-          type: integer
-        extend_days:
-          minimum: 1
-          type: integer
-      type: object
-    DLQReplayRequest:
-      properties:
-        id:
-          description: "Stream entry ID, e.g. 1690001112223-0"
-          type: string
-      required:
-      - id
-      type: object
     CreateTaskRequest:
       example:
         emails:
@@ -344,6 +862,7 @@ components:
           secret: secret
           timeout_ms: 1000
           url: https://openapi-generator.tech
+          event_url: https://openapi-generator.tech
       properties:
         emails:
           items:
@@ -383,6 +902,9 @@ components:
           type: pay_as_you_go
           remaining: 5
         status: status
+        tags:
+        - tags
+        - tags
       properties:
         status:
           type: string
@@ -397,6 +919,11 @@ components:
           type: integer
         key:
           $ref: '#/components/schemas/KeySummary'
+        tags:
+          description: Tags associated with the task
+          items:
+            type: string
+          type: array
       type: object
     KeySummary:
       example:
@@ -420,6 +947,755 @@ components:
         expires_at:
           description: unix ts
           type: integer
+      type: object
+    DomainRegisterReq:
+      example:
+        domain: domain
+      properties:
+        domain:
+          type: string
+      required:
+      - domain
+      type: object
+    DomainInfo:
+      example:
+        expires_at: 0
+        records:
+        - name: name
+          value: value
+        - name: name
+          value: value
+        domain: domain
+        status: status
+      properties:
+        domain:
+          type: string
+        status:
+          type: string
+        expires_at:
+          type: integer
+        records:
+          items:
+            $ref: '#/components/schemas/DomainInfo_records_inner'
+          type: array
+      type: object
+    SendEmailReq:
+      properties:
+        from:
+          format: email
+          type: string
+        to:
+          items:
+            format: email
+            type: string
+          type: array
+        subject:
+          type: string
+        text:
+          type: string
+        html:
+          type: string
+        validate:
+          default: false
+          type: boolean
+        skip_disposable:
+          default: false
+          type: boolean
+        skip_accept_all:
+          default: false
+          type: boolean
+      required:
+      - from
+      - to
+      type: object
+    Attachment:
+      example:
+        b64: b64
+        mime: mime
+        name: name
+      properties:
+        name:
+          description: Attachment filename
+          type: string
+        mime:
+          description: "MIME type, e.g. application/pdf"
+          type: string
+        b64:
+          description: Base-64 encoded file content
+          type: string
+      required:
+      - b64
+      - mime
+      - name
+      type: object
+    Recipient:
+      example:
+        data:
+          key: data
+        addr: addr
+      properties:
+        addr:
+          format: email
+          type: string
+        data:
+          additionalProperties:
+            type: string
+          description: Key-value map used for template variables
+          type: object
+      required:
+      - addr
+      type: object
+    Template:
+      example:
+        attachments:
+        - b64: b64
+          mime: mime
+          name: name
+        - b64: b64
+          mime: mime
+          name: name
+        reply_to: reply_to
+        subject: subject
+        from: from
+        html: html
+        text: text
+      properties:
+        from:
+          format: email
+          type: string
+        reply_to:
+          format: email
+          type: string
+        subject:
+          description: Go text/template syntax
+          type: string
+        text:
+          type: string
+        html:
+          type: string
+        attachments:
+          description: Optional list of attachments
+          items:
+            $ref: '#/components/schemas/Attachment'
+          type: array
+      required:
+      - from
+      - subject
+      - text
+      type: object
+    BatchEmail:
+      description: Task for asynchronous batch sending
+      example:
+        template:
+          attachments:
+          - b64: b64
+            mime: mime
+            name: name
+          - b64: b64
+            mime: mime
+            name: name
+          reply_to: reply_to
+          subject: subject
+          from: from
+          html: html
+          text: text
+        hook:
+          mode: completed
+          basic_auth:
+            password: password
+            user: user
+          max_retries: 0
+          dlq_url: https://openapi-generator.tech
+          secret: secret
+          timeout_ms: 1000
+          url: https://openapi-generator.tech
+          event_url: https://openapi-generator.tech
+        recipients:
+        - data:
+            key: data
+          addr: addr
+        - data:
+            key: data
+          addr: addr
+        - data:
+            key: data
+          addr: addr
+        - data:
+            key: data
+          addr: addr
+        - data:
+            key: data
+          addr: addr
+        skip_disposable: false
+        skip_risky: false
+        priority: false
+        validate: false
+        tags:
+        - tags
+        - tags
+      properties:
+        template:
+          $ref: '#/components/schemas/Template'
+        recipients:
+          items:
+            $ref: '#/components/schemas/Recipient'
+          maxItems: 10000
+          minItems: 1
+          type: array
+        validate:
+          default: false
+          description: Probe mailbox existence via SMTP
+          type: boolean
+        skip_disposable:
+          default: false
+          description: Drop addresses on disposable domains
+          type: boolean
+        skip_risky:
+          default: false
+          description: Drop domains detected as accept-all `risky` by SMTP probe
+          type: boolean
+        priority:
+          default: false
+          type: boolean
+        hook:
+          $ref: '#/components/schemas/WebhookConfig'
+        tags:
+          description: Optional tags associated with this batch task
+          items:
+            type: string
+          type: array
+      required:
+      - recipients
+      - template
+      type: object
+    BatchResponse:
+      example:
+        accepted: 0
+        task_id: task_id
+        skipped: 6
+      properties:
+        task_id:
+          type: string
+        accepted:
+          type: integer
+        skipped:
+          type: integer
+      type: object
+    ScheduledMailing:
+      description: "A scheduled mailing object representing a mailing job scheduled\
+        \ for future execution. It includes details such as the email template, recipient\
+        \ list, scheduled time (in ISO8601 UTC), client timezone, recurring options,\
+        \ and the number of credits reserved automatically (calculated as the count\
+        \ of recipients). It also contains the current status, any associated webhook\
+        \ configuration, and timestamps."
+      example:
+        template:
+          attachments:
+          - b64: b64
+            mime: mime
+            name: name
+          - b64: b64
+            mime: mime
+            name: name
+          reply_to: reply_to
+          subject: subject
+          from: from
+          html: html
+          text: text
+        timezone: timezone
+        recurring: true
+        created_at: 6
+        scheduled_time: 2000-01-23T04:56:07.000+00:00
+        recurrence_interval: recurrence_interval
+        tags:
+        - tags
+        - tags
+        hook:
+          mode: completed
+          basic_auth:
+            password: password
+            user: user
+          max_retries: 0
+          dlq_url: https://openapi-generator.tech
+          secret: secret
+          timeout_ms: 1000
+          url: https://openapi-generator.tech
+          event_url: https://openapi-generator.tech
+        updated_at: 1
+        api_key: api_key
+        credits: 0
+        recipients:
+        - recipients
+        - recipients
+        id: id
+        status: status
+      properties:
+        id:
+          description: Unique identifier (UUID) of the scheduled mailing.
+          type: string
+        api_key:
+          description: Owner's API key. This field may be omitted in client responses
+            if not required.
+          type: string
+        template:
+          $ref: '#/components/schemas/Template'
+        recipients:
+          description: List of recipient email addresses.
+          items:
+            format: email
+            type: string
+          type: array
+        scheduled_time:
+          description: Scheduled start time in ISO8601 format (UTC).
+          format: date-time
+          type: string
+        timezone:
+          description: "The client's timezone, e.g., \"America/New_York\", \"America/Toronto\"\
+            , or \"Europe/Paris\"."
+          type: string
+        recurring:
+          description: Indicates whether the mailing is recurring.
+          type: boolean
+        recurrence_interval:
+          description: "Recurrence interval (e.g., \"1 week\"); applicable if 'recurring'\
+            \ is true."
+          type: string
+        credits:
+          description: Number of credits automatically reserved for the mailing (calculated
+            as the number of recipients).
+          type: integer
+        status:
+          description: "Status of the mailing: e.g., \"pending\", \"running\", \"\
+            paused_due_to_insufficient_credits\", \"completed\", or \"cancelled\"."
+          type: string
+        hook:
+          $ref: '#/components/schemas/WebhookConfig'
+        tags:
+          description: Optional tags associated with this scheduled mailing.
+          items:
+            type: string
+          type: array
+        created_at:
+          description: Creation timestamp (Unix timestamp).
+          type: integer
+        updated_at:
+          description: Last update timestamp (Unix timestamp).
+          type: integer
+      required:
+      - created_at
+      - credits
+      - id
+      - recipients
+      - recurring
+      - scheduled_time
+      - status
+      - template
+      - timezone
+      - updated_at
+      type: object
+    CreateScheduledMailingReq:
+      description: "Request schema for creating a new scheduled mailing. Contains\
+        \ the email template, recipient list, client-provided scheduled time (ISO8601),\
+        \ timezone, recurring flag, recurrence interval (if applicable), number of\
+        \ credits to reserve, and an optional webhook configuration."
+      example:
+        template:
+          attachments:
+          - b64: b64
+            mime: mime
+            name: name
+          - b64: b64
+            mime: mime
+            name: name
+          reply_to: reply_to
+          subject: subject
+          from: from
+          html: html
+          text: text
+        hook:
+          mode: completed
+          basic_auth:
+            password: password
+            user: user
+          max_retries: 0
+          dlq_url: https://openapi-generator.tech
+          secret: secret
+          timeout_ms: 1000
+          url: https://openapi-generator.tech
+          event_url: https://openapi-generator.tech
+        recipients:
+        - recipients
+        - recipients
+        timezone: timezone
+        recurring: true
+        scheduled_time: scheduled_time
+        recurrence_interval: recurrence_interval
+        tags:
+        - tags
+        - tags
+      properties:
+        template:
+          $ref: '#/components/schemas/Template'
+        recipients:
+          description: List of recipient email addresses.
+          items:
+            format: email
+            type: string
+          type: array
+        scheduled_time:
+          description: Client-provided scheduled start time in ISO8601 format (with
+            timezone).
+          type: string
+        timezone:
+          description: "The client's timezone (e.g., 'America/New_York', 'America/Toronto',\
+            \ 'Europe/Paris')."
+          type: string
+        recurring:
+          description: Indicates whether the mailing is recurring.
+          type: boolean
+        recurrence_interval:
+          description: "Interval for recurring mailings (e.g., '1 week')."
+          type: string
+        hook:
+          $ref: '#/components/schemas/WebhookConfig'
+        tags:
+          description: Optional tags associated with this scheduled mailing.
+          items:
+            type: string
+          type: array
+      required:
+      - credits
+      - recipients
+      - recurring
+      - scheduled_time
+      - template
+      - timezone
+      type: object
+    CreateScheduledMailingResp:
+      description: Response schema returned upon successful creation of a scheduled
+        mailing. Contains the newly created scheduled mailing object.
+      example:
+        mailing:
+          template:
+            attachments:
+            - b64: b64
+              mime: mime
+              name: name
+            - b64: b64
+              mime: mime
+              name: name
+            reply_to: reply_to
+            subject: subject
+            from: from
+            html: html
+            text: text
+          timezone: timezone
+          recurring: true
+          created_at: 6
+          scheduled_time: 2000-01-23T04:56:07.000+00:00
+          recurrence_interval: recurrence_interval
+          tags:
+          - tags
+          - tags
+          hook:
+            mode: completed
+            basic_auth:
+              password: password
+              user: user
+            max_retries: 0
+            dlq_url: https://openapi-generator.tech
+            secret: secret
+            timeout_ms: 1000
+            url: https://openapi-generator.tech
+            event_url: https://openapi-generator.tech
+          updated_at: 1
+          api_key: api_key
+          credits: 0
+          recipients:
+          - recipients
+          - recipients
+          id: id
+          status: status
+      properties:
+        mailing:
+          $ref: '#/components/schemas/ScheduledMailing'
+      type: object
+    GetScheduledMailingResp:
+      description: Response schema for retrieving the details of a specific scheduled
+        mailing.
+      example:
+        mailing:
+          template:
+            attachments:
+            - b64: b64
+              mime: mime
+              name: name
+            - b64: b64
+              mime: mime
+              name: name
+            reply_to: reply_to
+            subject: subject
+            from: from
+            html: html
+            text: text
+          timezone: timezone
+          recurring: true
+          created_at: 6
+          scheduled_time: 2000-01-23T04:56:07.000+00:00
+          recurrence_interval: recurrence_interval
+          tags:
+          - tags
+          - tags
+          hook:
+            mode: completed
+            basic_auth:
+              password: password
+              user: user
+            max_retries: 0
+            dlq_url: https://openapi-generator.tech
+            secret: secret
+            timeout_ms: 1000
+            url: https://openapi-generator.tech
+            event_url: https://openapi-generator.tech
+          updated_at: 1
+          api_key: api_key
+          credits: 0
+          recipients:
+          - recipients
+          - recipients
+          id: id
+          status: status
+      properties:
+        mailing:
+          $ref: '#/components/schemas/ScheduledMailing'
+      type: object
+    UpdateScheduledMailingReq:
+      description: Request schema for updating an existing scheduled mailing. All
+        fields are optional; only provided fields will be updated.
+      example:
+        template:
+          attachments:
+          - b64: b64
+            mime: mime
+            name: name
+          - b64: b64
+            mime: mime
+            name: name
+          reply_to: reply_to
+          subject: subject
+          from: from
+          html: html
+          text: text
+        hook:
+          mode: completed
+          basic_auth:
+            password: password
+            user: user
+          max_retries: 0
+          dlq_url: https://openapi-generator.tech
+          secret: secret
+          timeout_ms: 1000
+          url: https://openapi-generator.tech
+          event_url: https://openapi-generator.tech
+        mailing_id: mailing_id
+        credits: 0
+        recipients:
+        - recipients
+        - recipients
+        timezone: timezone
+        recurring: true
+        scheduled_time: scheduled_time
+        recurrence_interval: recurrence_interval
+        tags:
+        - tags
+        - tags
+      properties:
+        mailing_id:
+          description: Unique identifier of the scheduled mailing.
+          type: string
+        template:
+          $ref: '#/components/schemas/Template'
+        recipients:
+          description: Updated list of recipient email addresses.
+          items:
+            format: email
+            type: string
+          type: array
+        scheduled_time:
+          description: Updated scheduled start time in ISO8601 format.
+          type: string
+        timezone:
+          description: Updated client timezone.
+          type: string
+        recurring:
+          description: Updated recurring flag.
+          type: boolean
+        recurrence_interval:
+          description: "Updated recurrence interval (e.g., '1 week')."
+          type: string
+        credits:
+          description: Updated number of credits to reserve.
+          type: integer
+        hook:
+          $ref: '#/components/schemas/WebhookConfig'
+        tags:
+          description: Updated tags associated with this scheduled mailing.
+          items:
+            type: string
+          type: array
+      type: object
+    UpdateScheduledMailingResp:
+      description: Response schema for updating a scheduled mailing. Returns the modified
+        scheduled mailing.
+      example:
+        mailing:
+          template:
+            attachments:
+            - b64: b64
+              mime: mime
+              name: name
+            - b64: b64
+              mime: mime
+              name: name
+            reply_to: reply_to
+            subject: subject
+            from: from
+            html: html
+            text: text
+          timezone: timezone
+          recurring: true
+          created_at: 6
+          scheduled_time: 2000-01-23T04:56:07.000+00:00
+          recurrence_interval: recurrence_interval
+          tags:
+          - tags
+          - tags
+          hook:
+            mode: completed
+            basic_auth:
+              password: password
+              user: user
+            max_retries: 0
+            dlq_url: https://openapi-generator.tech
+            secret: secret
+            timeout_ms: 1000
+            url: https://openapi-generator.tech
+            event_url: https://openapi-generator.tech
+          updated_at: 1
+          api_key: api_key
+          credits: 0
+          recipients:
+          - recipients
+          - recipients
+          id: id
+          status: status
+      properties:
+        mailing:
+          $ref: '#/components/schemas/ScheduledMailing'
+      type: object
+    DeleteScheduledMailingResp:
+      description: Response schema confirming the successful deletion of a scheduled
+        mailing.
+      example:
+        status: deleted
+      properties:
+        status:
+          description: "Confirmation message, typically 'deleted'."
+          example: deleted
+          type: string
+      type: object
+    ListScheduledMailingsResp:
+      description: Response schema for listing scheduled mailings. Returns an array
+        of scheduled mailing objects.
+      example:
+        mailings:
+        - template:
+            attachments:
+            - b64: b64
+              mime: mime
+              name: name
+            - b64: b64
+              mime: mime
+              name: name
+            reply_to: reply_to
+            subject: subject
+            from: from
+            html: html
+            text: text
+          timezone: timezone
+          recurring: true
+          created_at: 6
+          scheduled_time: 2000-01-23T04:56:07.000+00:00
+          recurrence_interval: recurrence_interval
+          tags:
+          - tags
+          - tags
+          hook:
+            mode: completed
+            basic_auth:
+              password: password
+              user: user
+            max_retries: 0
+            dlq_url: https://openapi-generator.tech
+            secret: secret
+            timeout_ms: 1000
+            url: https://openapi-generator.tech
+            event_url: https://openapi-generator.tech
+          updated_at: 1
+          api_key: api_key
+          credits: 0
+          recipients:
+          - recipients
+          - recipients
+          id: id
+          status: status
+        - template:
+            attachments:
+            - b64: b64
+              mime: mime
+              name: name
+            - b64: b64
+              mime: mime
+              name: name
+            reply_to: reply_to
+            subject: subject
+            from: from
+            html: html
+            text: text
+          timezone: timezone
+          recurring: true
+          created_at: 6
+          scheduled_time: 2000-01-23T04:56:07.000+00:00
+          recurrence_interval: recurrence_interval
+          tags:
+          - tags
+          - tags
+          hook:
+            mode: completed
+            basic_auth:
+              password: password
+              user: user
+            max_retries: 0
+            dlq_url: https://openapi-generator.tech
+            secret: secret
+            timeout_ms: 1000
+            url: https://openapi-generator.tech
+            event_url: https://openapi-generator.tech
+          updated_at: 1
+          api_key: api_key
+          credits: 0
+          recipients:
+          - recipients
+          - recipients
+          id: id
+          status: status
+      properties:
+        mailings:
+          description: List of scheduled mailings associated with the authenticated
+            API key.
+          items:
+            $ref: '#/components/schemas/ScheduledMailing'
+          type: array
       type: object
     PaginatedResults:
       example:
@@ -451,6 +1727,23 @@ components:
           items:
             $ref: '#/components/schemas/EmailReport'
           type: array
+      type: object
+    _v1_domains__domain__patch_200_response:
+      example:
+        verified: true
+      properties:
+        verified:
+          type: boolean
+      type: object
+    DomainInfo_records_inner:
+      example:
+        name: name
+        value: value
+      properties:
+        name:
+          type: string
+        value:
+          type: string
       type: object
   securitySchemes:
     ApiKeyAuth:
